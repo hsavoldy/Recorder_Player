@@ -1,12 +1,12 @@
 '''
 Created on Jun 22, 2020
 
-@author: haels
+@author: hsavoldy
 '''
 import re
 
 tempo = 60
-note_values = {"whole": 4, "half": 2, "quarter": 1, "eight": .5, "sixteenth": .25}
+note_values = {"whole": 4, "half": 2, "quarter": 1, "eighth": .5, "sixteenth": .25}
 
 def main():
     #prompt = '>'
@@ -47,17 +47,43 @@ def find_notes_and_rests(song_str):
     Inputs:
         song_str: the contents of the .mscx file as a string
     Returns:
-        instructions: list of tuples representing notes and rests.
+        instructions: list of tuples representing notes and rests in order.
         (int representing index of note, string representing pitch, float
         representing note length)
     '''
     note_indices = [m.start() for m in re.finditer('<Chord>', song_str)]
     rest_indices = [m.start() for m in re.finditer('<Rest>', song_str)]
     instructions = []
+    
     for note_ind in note_indices:
         instructions.append(create_note_tuple(song_str, note_ind))
         
-    print()
+    for rest_ind in rest_indices:
+        instructions.append(create_rest_tuple(song_str, rest_ind))
+    
+    #sort by index so that notes and rests are in order
+    instructions.sort(key=lambda tup: tup[0])
+    
+    return instructions
+    
+def create_rest_tuple(song_str, rest_ind):
+    ''' Find and put together rest index, pitch (None for rest), and 
+    length values as a tuple 
+    Inputs:
+        song_str: the contents of the .mscx file as a string
+        note_ind: the starting index of the note in song_str
+    Returns:
+        note_tup: a tuple containing: (int representing index of note, 
+        string representing pitch, float representing note length)
+    '''
+    #(index, pitch, length)
+        
+    length = find_length(song_str, rest_ind, False)
+    pitch = None
+        
+    rest_tup = (rest_ind, pitch, length) 
+    return rest_tup
+
     
 def create_note_tuple(song_str, note_ind):
     ''' Find and put together note index, pitch, and length values as a tuple 
@@ -69,13 +95,22 @@ def create_note_tuple(song_str, note_ind):
         string representing pitch, float representing note length)
     '''
     #(index, pitch, length)
-    note_tup = (note_ind,)
         
-    #extract pitch
-    pitch_ind = song_str.find("<pitch>", note_ind)
-    pitch_ind_end = song_str.find("</pitch>", note_ind)
-    pitch = song_str[pitch_ind+7: pitch_ind_end]
+    length = find_length(song_str, note_ind, True)
+    pitch = find_pitch(song_str, note_ind)
         
+    note_tup = (note_ind, pitch, length) 
+    return note_tup
+
+def find_length(song_str, note_ind, note):
+    ''' Find note/rest length, including dots
+    Inputs:
+        song_str: the contents of the .mscx file as a string
+        note_ind: the starting index of the note in song_str
+        note: boolean that is True if it is a note and False if it is a rest
+    Returns:
+        length: float representing how many beats the note/rest gets
+    '''
     #extract length
     length_ind = song_str.find("<durationType>", note_ind)
     length_ind_end = song_str.find("</durationType>", note_ind)
@@ -83,7 +118,10 @@ def create_note_tuple(song_str, note_ind):
     length = note_values[length]
         
     #adjust length by dots if need be
-    note_ind_end = song_str.find("</Chord>", note_ind)
+    if note:
+        note_ind_end = song_str.find("</Chord>", note_ind)
+    else:
+        note_ind_end = song_str.find("</Rest>", note_ind)
     dot_ind = song_str.find("<dots>", note_ind, note_ind_end)
         
     if dot_ind != -1:
@@ -92,10 +130,21 @@ def create_note_tuple(song_str, note_ind):
         #add dot to value
         length = length*1.5*(1/dots)
             
-    #concatenate note tuple
-    note_tup = note_tup + (pitch,) + (length,)
-       
-    return note_tup
+    return length
+
+def find_pitch(song_str, note_ind):
+    ''' Find note pitch
+    Inputs:
+        song_str: the contents of the .mscx file as a string
+        note_ind: the starting index of the note in song_str
+    Returns:
+        pitch: string representing the pitch of the note
+    '''
+    #extract pitch
+    pitch_ind = song_str.find("<pitch>", note_ind)
+    pitch_ind_end = song_str.find("</pitch>", note_ind)
+    pitch = song_str[pitch_ind+7: pitch_ind_end]
+    return pitch
 
 if __name__ == '__main__':
     main()

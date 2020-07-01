@@ -4,20 +4,26 @@ Created on Jun 22, 2020
 @author: hsavoldy
 '''
 import re
+import serial, time
 
+#arduino_port = 'COM5'
 tempo = 60
-note_values = {"whole": 4, "half": 2, "quarter": 1, "eighth": .5, "sixteenth": .25}
+length_values = {"whole": 4, "half": 2, "quarter": 1, "eighth": .5, "sixteenth": .25}
+note_encodings = {'78': 'a', '77': 'b', '76': 'c', '75': 'd', '74': 'e', '73': 'f', '72': 'g', '71': 'h', 
+                  '70': 'i', '69': 'j', '68': 'k', '67': 'l', '66': 'm', '65': 'n', '64': 'o', '63': 'p', 
+                  '62': 'q', '61': 'r', '60': 's', 'rest': 't'}
 
 def main():
     #prompt = '>'
     #print('Enter file directory')
     #file_dir = input(prompt).replace('/', "\\")
     file_name = "C:/Users/haels/OneDrive/Documents/Recorder Player/Test.mscx"
-    song_str = create_song_string(file_name)
+    song_str = create_raw_song_string(file_name)
     adjust_tempo(song_str)
-    find_notes_and_rests(song_str)
+    arduino_str = find_notes_and_rests(song_str)
+    send_to_arduino("COM5", arduino_str)
     
-def create_song_string(file_name):
+def create_raw_song_string(file_name):
     '''Turns input file_name into a string
     Inputs:
         file_name: string containing path directory and name of .mscx file
@@ -47,9 +53,8 @@ def find_notes_and_rests(song_str):
     Inputs:
         song_str: the contents of the .mscx file as a string
     Returns:
-        instructions: list of tuples representing notes and rests in order.
-        (int representing index of note, string representing pitch, float
-        representing note length)
+        instructions: string containing notes and rests in order. Two values for 
+        each note: note pitch and length value
     '''
     note_indices = [m.start() for m in re.finditer('<Chord>', song_str)]
     rest_indices = [m.start() for m in re.finditer('<Rest>', song_str)]
@@ -64,7 +69,9 @@ def find_notes_and_rests(song_str):
     #sort by index so that notes and rests are in order
     instructions.sort(key=lambda tup: tup[0])
     
-    return instructions
+    instructions = [ i[1]+str(i[2]) for i in instructions]
+    
+    return ''.join(instructions)
     
 def create_rest_tuple(song_str, rest_ind):
     ''' Find and put together rest index, pitch (None for rest), and 
@@ -79,7 +86,7 @@ def create_rest_tuple(song_str, rest_ind):
     #(index, pitch, length)
         
     length = find_length(song_str, rest_ind, False)
-    pitch = None
+    pitch = 't'
         
     rest_tup = (rest_ind, pitch, length) 
     return rest_tup
@@ -115,7 +122,7 @@ def find_length(song_str, note_ind, note):
     length_ind = song_str.find("<durationType>", note_ind)
     length_ind_end = song_str.find("</durationType>", note_ind)
     length = song_str[length_ind+14: length_ind_end]
-    length = note_values[length]
+    length = length_values[length]
         
     #adjust length by dots if need be
     if note:
@@ -138,13 +145,33 @@ def find_pitch(song_str, note_ind):
         song_str: the contents of the .mscx file as a string
         note_ind: the starting index of the note in song_str
     Returns:
-        pitch: string representing the pitch of the note
+        pitch: character representing the pitch of the note (identifiable by Arduino code)
     '''
     #extract pitch
     pitch_ind = song_str.find("<pitch>", note_ind)
     pitch_ind_end = song_str.find("</pitch>", note_ind)
     pitch = song_str[pitch_ind+7: pitch_ind_end]
-    return pitch
+    encoded_pitch = note_encodings[pitch]
+    return encoded_pitch
+
+def send_to_arduino(arduino_port, arduino_str):
+    ''' Sends a string of pitch values and lengths to the arduino to 
+    be played by recorder
+    Inputs:
+        arduino_port: string containing the current port connecting 
+            the arduino to the machine. example: "COM5"
+        arduino_str: string containing encoded pitch value followed 
+            by length value for every note in the file.
+            example: whole note E followed by half note D: "a4c2"
+    '''
+    arduino = serial.Serial(arduino_port, 115200, timeout=None)
+    time.sleep(1)
+    arduino_bytes = bytes(arduino_str, 'utf-8')
+
+    arduino.write(arduino_bytes)
+    print('Sending song to arduino...')
+    arduino.close()
+    print('Processing on arduino...')
 
 if __name__ == '__main__':
     main()
